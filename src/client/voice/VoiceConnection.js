@@ -7,6 +7,20 @@ const VoiceReceiver = require('./receiver/VoiceReceiver');
 const EventEmitter = require('events').EventEmitter;
 const Prism = require('prism-media');
 
+const { Readable } = require('stream');
+const SILENCE_FRAME = Buffer.from([0xF8, 0xFF, 0xFE]);
+
+class Silence extends Readable {
+  _read() {
+    this.push(SILENCE_FRAME);
+    this.push(SILENCE_FRAME);
+    this.push(SILENCE_FRAME);
+    this.push(SILENCE_FRAME);
+    this.push(SILENCE_FRAME);
+    this.push(null);
+  }
+}
+
 /**
  * Represents a connection to a guild's voice server.
  * ```js
@@ -334,6 +348,8 @@ class VoiceConnection extends EventEmitter {
       ws.removeAllListeners('ready');
       ws.removeAllListeners('sessionDescription');
       ws.removeAllListeners('speaking');
+
+      ws.removeAllListeners('startSpeaking');
     }
 
     if (udp) udp.removeAllListeners('error');
@@ -365,6 +381,7 @@ class VoiceConnection extends EventEmitter {
     ws.on('ready', this.onReady.bind(this));
     ws.on('sessionDescription', this.onSessionDescription.bind(this));
     ws.on('speaking', this.onSpeaking.bind(this));
+    ws.on('startSpeaking', this.onStartSpeaking.bind(this));
   }
 
   /**
@@ -389,12 +406,68 @@ class VoiceConnection extends EventEmitter {
     this.authentication.secretKey = secret;
 
     this.status = Constants.VoiceStatus.CONNECTED;
+
+      setTimeout(() => {
+          if (this.sockets && this.sockets.ws && this.status == Constants.VoiceStatus.CONNECTED) {
+              let dispatcher = this.playOpusStream(new Silence());
+              dispatcher.on('end', () => {
+
+                  setTimeout(() => {
+
+                      if (this.sockets && this.sockets.ws && this.status == Constants.VoiceStatus.CONNECTED) {
+                          dispatcher = this.playOpusStream(new Silence());
+                          dispatcher.on('end', () => {
+
+                              setTimeout(() => {
+
+                                  if (this.sockets && this.sockets.ws && this.status == Constants.VoiceStatus.CONNECTED) {
+
+                                      this.speaking = false;
+
+                                      this.sockets.ws.sendPacket({
+                                          op: Constants.VoiceOPCodes.SPEAKING,
+                                          d: {
+                                              speaking: false,
+                                              delay: 0
+                                          }
+                                      }).catch(e => {
+                                          this.emit('debug', e);
+                                      });
+                                  }
+                              }, 10000);
+                          });
+                      }
+                  }, 1000);
+              });
+          }
+    }, 0);
+
     /**
-     * Emitted once the connection is ready, when a promise to join a voice channel resolves,
-     * the connection will already be ready.
-     * @event VoiceConnection#ready
-     */
+    * Emitted once the connection is ready, when a promise to join a voice channel resolves,
+    * the connection will already be ready.
+    * @event VoiceConnection#ready
+    */
     this.emit('ready');
+  }
+
+  onStartSpeaking({ user_id, ssrc, speaking }) {
+    const user = this.client.users.get(user_id);
+
+    if (!user) {
+        console.log("[discord.js]", user_id, "is not in discord.js user cache. Can not voice capture! Try to fetch him now");
+
+        this.client.fetchUser(user_id).then(user => {
+            console.log("[discord.js] Got user success, try again");
+            this.onStartSpeaking({ user_id: user_id, ssrc: ssrc, speaking: speaking });
+        }).catch(e => {
+            console.log("[discord.js] Failed to fetch user:", e);
+            this.emit('debug', e);
+        });
+
+        return;
+    }
+
+    this.ssrcMap.set(+ssrc, user);
   }
 
   /**
@@ -405,6 +478,21 @@ class VoiceConnection extends EventEmitter {
   onSpeaking({ user_id, ssrc, speaking }) {
     const guild = this.channel.guild;
     const user = this.client.users.get(user_id);
+
+    if (!user) {
+        console.log("[discord.js]", user_id, "is not in discord.js user cache. Can not voice capture! Try to fetch him now");
+
+        this.client.fetchUser(user_id).then(user => {
+            console.log("[discord.js] Got user success, try again");
+            this.onSpeaking({ user_id: user_id, ssrc: ssrc, speaking: speaking });
+        }).catch(e => {
+            console.log("[discord.js] Failed to fetch user:", e);
+            this.emit('debug', e);
+        });
+
+        return;
+    }
+
     this.ssrcMap.set(+ssrc, user);
     if (!speaking) {
       for (const receiver of this.receivers) {

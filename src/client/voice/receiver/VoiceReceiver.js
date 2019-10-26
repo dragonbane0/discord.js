@@ -2,6 +2,7 @@ const EventEmitter = require('events').EventEmitter;
 const secretbox = require('../util/Secretbox');
 const Readable = require('./VoiceReadable');
 const OpusEncoders = require('../opus/OpusEngineList');
+const fs = require('fs');
 
 const nonce = Buffer.alloc(24);
 nonce.fill(0);
@@ -28,6 +29,7 @@ class VoiceReceiver extends EventEmitter {
     this.pcmStreams = new Map();
     this.opusStreams = new Map();
     this.opusEncoders = new Map();
+    this.speakingTimeouts = new Map();
 
     /**
      * Whether or not this receiver has been destroyed
@@ -48,6 +50,27 @@ class VoiceReceiver extends EventEmitter {
         if (!this.queues.has(ssrc)) this.queues.set(ssrc, []);
         this.queues.get(ssrc).push(msg);
       } else {
+
+        if (this.speakingTimeouts.get(ssrc)) {
+            clearTimeout(this.speakingTimeouts.get(ssrc));
+            this.speakingTimeouts.delete(ssrc);
+        }
+        else {
+            this.voiceConnection.onSpeaking({user_id: user.id, ssrc: ssrc, speaking: true});
+        }
+     
+        let speakingTimer = setTimeout(() => {
+            try {
+                this.voiceConnection.onSpeaking({ user_id: user.id, ssrc: ssrc, speaking: false });
+                this.speakingTimeouts.delete(ssrc);
+            }
+            catch (ex) {
+                console.log("Connection already closed, skip onSpeaking event!");
+            }
+        }, 30);
+
+        this.speakingTimeouts.set(ssrc, speakingTimer);
+
         if (this.queues.get(ssrc)) {
           this.queues.get(ssrc).push(msg);
           this.queues.get(ssrc).map(m => this.handlePacket(m, user));
@@ -145,67 +168,86 @@ class VoiceReceiver extends EventEmitter {
     return stream;
   }
 
-  handlePacket(msg, user) {
-    msg.copy(nonce, 0, 0, 12);
-    let data = secretbox.methods.open(msg.slice(12), nonce, this.voiceConnection.authentication.secretKey.key);
-    if (!data) {
-      /**
-       * Emitted whenever a voice packet experiences a problem.
-       * @event VoiceReceiver#warn
-       * @param {string} reason The reason for the warning. If it happened because the voice packet could not be
-       * decrypted, this would be `decrypt`. If it happened because the voice packet could not be decoded into
-       * PCM, this would be `decode`
-       * @param {string} message The warning message
-       */
-      this.emit('warn', 'decrypt', 'Failed to decrypt voice packet');
-      return;
-    }
-    data = Buffer.from(data);
+    handlePacket(msg, user) {
 
-    // Strip RTP Header Extensions (one-byte only)
-    if (data[0] === 0xBE && data[1] === 0xDE && data.length > 4) {
-      const headerExtensionLength = data.readUInt16BE(2);
-      let offset = 4;
-      for (let i = 0; i < headerExtensionLength; i++) {
-        const byte = data[offset];
-        offset++;
-        if (byte === 0) {
-          continue;
+        const mode = this.voiceConnection.authentication.encryptionMode;
+        const secret_key = this.voiceConnection.authentication.secretKey.key;
+
+        // Choose correct nonce depending on encryption
+        let end;
+        if (mode === 'xsalsa20_poly1305_lite') {
+            msg.copy(nonce, 0, msg.length - 4);
+            end = msg.length - 4;
+        } else if (mode === 'xsalsa20_poly1305_suffix') {
+            msg.copy(nonce, 0, msg.length - 24);
+            end = msg.length - 24;
+        } else {
+            msg.copy(nonce, 0, 0, 12);
         }
-        offset += 1 + (0b1111 & (byte >> 4));
-      }
-      while (data[offset] === 0) {
-        offset++;
-      }
-      data = data.slice(offset);
-    }
 
-    if (this.opusStreams.get(user.id)) this.opusStreams.get(user.id)._push(data);
-    /**
-     * Emitted whenever voice data is received from the voice connection. This is _always_ emitted (unlike PCM).
-     * @event VoiceReceiver#opus
-     * @param {User} user The user that is sending the buffer (is speaking)
-     * @param {Buffer} buffer The opus buffer
-     */
-    this.emit('opus', user, data);
-    if (this.listenerCount('pcm') > 0 || this.pcmStreams.size > 0) {
-      if (!this.opusEncoders.get(user.id)) this.opusEncoders.set(user.id, OpusEncoders.fetch());
-      const { pcm, error } = VoiceReceiver._tryDecode(this.opusEncoders.get(user.id), data);
-      if (error) {
-        this.emit('warn', 'decode', `Failed to decode packet voice to PCM because: ${error.message}`);
-        return;
-      }
-      if (this.pcmStreams.get(user.id)) this.pcmStreams.get(user.id)._push(pcm);
-      /**
-       * Emits decoded voice data when it's received. For performance reasons, the decoding will only
-       * happen if there is at least one `pcm` listener on this receiver.
-       * @event VoiceReceiver#pcm
-       * @param {User} user The user that is sending the buffer (is speaking)
-       * @param {Buffer} buffer The decoded buffer
-       */
-      this.emit('pcm', user, pcm);
+        let data = secretbox.methods.open(msg.slice(12, end), nonce, secret_key);
+        if (!data) {
+            /**
+             * Emitted whenever a voice packet experiences a problem.
+             * @event VoiceReceiver#warn
+             * @param {string} reason The reason for the warning. If it happened because the voice packet could not be
+             * decrypted, this would be `decrypt`. If it happened because the voice packet could not be decoded into
+             * PCM, this would be `decode`
+             * @param {string} message The warning message
+             */
+            this.emit('warn', 'decrypt', 'Failed to decrypt voice packet');
+            return;
+        }
+        data = Buffer.from(data);
+
+        // Strip RTP Header Extensions (one-byte only)
+        if (data[0] === 0xBE && data[1] === 0xDE && data.length > 4) {
+            const headerExtensionLength = data.readUInt16BE(2);
+            let offset = 4;
+            for (let i = 0; i < headerExtensionLength; i++) {
+                const byte = data[offset];
+                offset++;
+                if (byte === 0) {
+                    continue;
+                }
+                offset += 1 + (0b1111 & (byte >> 4));
+            }
+
+            offset++; //Discord utility byte
+
+            //while (data[offset] === 0 || data[offset] === 2) {
+              //offset++;
+            //}
+
+            data = data.slice(offset);
+        }
+
+        if (this.opusStreams.get(user.id)) this.opusStreams.get(user.id)._push(data);
+        /**
+         * Emitted whenever voice data is received from the voice connection. This is _always_ emitted (unlike PCM).
+         * @event VoiceReceiver#opus
+         * @param {User} user The user that is sending the buffer (is speaking)
+         * @param {Buffer} buffer The opus buffer
+         */
+        this.emit('opus', user, data);
+        if (this.listenerCount('pcm') > 0 || this.pcmStreams.size > 0) {
+            if (!this.opusEncoders.get(user.id)) this.opusEncoders.set(user.id, OpusEncoders.fetch());
+            const { pcm, error } = VoiceReceiver._tryDecode(this.opusEncoders.get(user.id), data);
+            if (error) {
+                this.emit('warn', 'decode', `Failed to decode packet voice to PCM because: ${error.message}`);
+                return;
+            }
+            if (this.pcmStreams.get(user.id)) this.pcmStreams.get(user.id)._push(pcm);
+            /**
+             * Emits decoded voice data when it's received. For performance reasons, the decoding will only
+             * happen if there is at least one `pcm` listener on this receiver.
+             * @event VoiceReceiver#pcm
+             * @param {User} user The user that is sending the buffer (is speaking)
+             * @param {Buffer} buffer The decoded buffer
+             */
+            this.emit('pcm', user, pcm);
+        }
     }
-  }
 
   static _tryDecode(encoder, data) {
     try {
