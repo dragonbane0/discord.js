@@ -128,6 +128,13 @@ class VoiceConnection extends EventEmitter {
      */
     this.sockets = {};
 
+     /**
+     * Timeout that makes the bot talk periodically to stay authed
+     * @type {Timeout}
+     * @private
+     */
+    this.speakingPingTimeout = null;
+
     this.authenticate();
   }
 
@@ -329,6 +336,13 @@ class VoiceConnection extends EventEmitter {
     this.player.destroy();
     this.cleanup();
     this.status = Constants.VoiceStatus.DISCONNECTED;
+
+    // Clean up speaking ping event
+    if (this.speakingPingTimeout) {
+        clearTimeout(this.speakingPingTimeout);
+        this.speakingPingTimeout = null;
+    }
+
     /**
      * Emitted when the voice connection disconnects.
      * @event VoiceConnection#disconnect
@@ -407,18 +421,35 @@ class VoiceConnection extends EventEmitter {
 
     this.status = Constants.VoiceStatus.CONNECTED;
 
-      setTimeout(() => {
+    if (this.speakingPingTimeout) {
+        clearTimeout(this.speakingPingTimeout);
+        this.speakingPingTimeout = null;
+    }
+
+    this.onSpeakingPing();
+     
+    /**
+    * Emitted once the connection is ready, when a promise to join a voice channel resolves,
+    * the connection will already be ready.
+    * @event VoiceConnection#ready
+    */
+    this.emit('ready');
+  }
+
+  onSpeakingPing() {
+
+      this.speakingPingTimeout = setTimeout(() => {
           if (this.sockets && this.sockets.ws && this.status == Constants.VoiceStatus.CONNECTED) {
               let dispatcher = this.playOpusStream(new Silence());
               dispatcher.on('end', () => {
 
-                  setTimeout(() => {
+                  this.speakingPingTimeout = setTimeout(() => {
 
                       if (this.sockets && this.sockets.ws && this.status == Constants.VoiceStatus.CONNECTED) {
                           dispatcher = this.playOpusStream(new Silence());
                           dispatcher.on('end', () => {
 
-                              setTimeout(() => {
+                              this.speakingPingTimeout = setTimeout(() => {
 
                                   if (this.sockets && this.sockets.ws && this.status == Constants.VoiceStatus.CONNECTED) {
 
@@ -433,6 +464,12 @@ class VoiceConnection extends EventEmitter {
                                       }).catch(e => {
                                           this.emit('debug', e);
                                       });
+
+                                      this.speakingPingTimeout = setTimeout(() => {
+                                          if (this.sockets && this.sockets.ws && this.status == Constants.VoiceStatus.CONNECTED) {
+                                              this.onSpeakingPing();
+                                          }
+                                      }, 60000); //speak every minute
                                   }
                               }, 10000);
                           });
@@ -440,14 +477,7 @@ class VoiceConnection extends EventEmitter {
                   }, 1000);
               });
           }
-    }, 0);
-
-    /**
-    * Emitted once the connection is ready, when a promise to join a voice channel resolves,
-    * the connection will already be ready.
-    * @event VoiceConnection#ready
-    */
-    this.emit('ready');
+      }, 0);
   }
 
   onStartSpeaking({ user_id, ssrc, speaking }) {
