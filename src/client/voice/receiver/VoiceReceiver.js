@@ -38,36 +38,62 @@ class VoiceReceiver extends EventEmitter {
     this.destroyed = false;
 
     /**
+   * To check whether the socket has disconnected
+   * @type {Timer}
+   */
+    this.disconnectTimer = null;
+
+    /**
      * The VoiceConnection that instantiated this
      * @type {VoiceConnection}
      */
     this.voiceConnection = connection;
 
     this._listener = msg => {
+      const packageType = msg.readUInt8(0);
       const ssrc = +msg.readUInt32BE(8).toString(10);
       const user = this.voiceConnection.ssrcMap.get(ssrc);
+
+      if (this.disconnectTimer) {
+          clearTimeout(this.disconnectTimer);
+          this.disconnectTimer = null;
+      }
+
+      if (!this.disconnectTimer) {
+          this.disconnectTimer = setTimeout(() => {
+
+            if (!this.destroyed) {
+              console.error("[discord.js] UDP Voice Socket hasn't received a voice package in 2 seconds, likely disconnected!");
+              this.emit('error', { message: "reconnect_required" });
+            }
+          }, 2000);
+      }
+
+      if (packageType == 129 && !user) { //Ignore ping packages ; 129 = ping, 144 = speaking
+          return;
+      }
+
       if (!user) {
         if (!this.queues.has(ssrc)) this.queues.set(ssrc, []);
         this.queues.get(ssrc).push(msg);
       } else {
 
         if (this.speakingTimeouts.get(ssrc)) {
-            clearTimeout(this.speakingTimeouts.get(ssrc));
-            this.speakingTimeouts.delete(ssrc);
-        }
-        else {
-            this.voiceConnection.onSpeaking({user_id: user.id, ssrc: ssrc, speaking: true});
+          clearTimeout(this.speakingTimeouts.get(ssrc));
+          this.speakingTimeouts.delete(ssrc);
+        } else {
+          this.voiceConnection.onSpeaking({user_id: user.id, ssrc: ssrc, speaking: true});
         }
      
         let speakingTimer = setTimeout(() => {
-            try {
-                this.voiceConnection.onSpeaking({ user_id: user.id, ssrc: ssrc, speaking: false });
-                this.speakingTimeouts.delete(ssrc);
-            }
-            catch (ex) {
-                console.log("Connection already closed, skip onSpeaking event!");
-            }
-        }, 30);
+          try {
+            this.voiceConnection.onSpeaking({ user_id: user.id, ssrc: ssrc, speaking: false });
+            this.speakingTimeouts.delete(ssrc);
+          }
+          catch (ex) {
+            console.log("Connection already closed, skip onSpeaking event!");
+          }
+        }, 40);
 
         this.speakingTimeouts.set(ssrc, speakingTimer);
 

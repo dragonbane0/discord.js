@@ -145,7 +145,11 @@ class VoiceWebSocket extends EventEmitter {
    * Called whenever the connection to the WebSocket server is lost.
    */
   onClose() {
-    if (!this.dead) this.client.setTimeout(this.connect.bind(this), this.attempts * 1000);
+
+    console.error("[discord.js] TCP Voice Socket got closed, need a re-connect!");
+    this.reset();
+
+    if (!this.dead) this.emit('error', { message: "reconnect_required" }); //this.client.setTimeout(this.connect.bind(this), this.attempts * 1000);
   }
 
   /**
@@ -153,7 +157,20 @@ class VoiceWebSocket extends EventEmitter {
    * @param {Error} error The error that occurred
    */
   onError(error) {
-    this.emit('error', error);
+
+    console.error("[discord.js] TCP Voice Socket error:", error);
+
+    if (!this.dead) {
+
+      if (error.message === "uWs client connection error") { //Got disconnected from the TCP Voice Socket
+        this.reset();
+        this.emit('error', { message: "reconnect_required" });
+
+        return;
+      }
+
+      this.emit('error', error);
+    }
   }
 
   /**

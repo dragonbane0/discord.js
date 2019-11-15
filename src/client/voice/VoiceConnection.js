@@ -326,6 +326,19 @@ class VoiceConnection extends EventEmitter {
   }
 
   /**
+   * Attempts to reconnect to the voice server fast.
+   */
+  reconnectFast() {
+    this.status = Constants.VoiceStatus.RECONNECTING;
+    /**
+    * Emitted when the voice connection is reconnecting (typically after a region change).
+    * @event VoiceConnection#reconnecting
+     */
+    this.emit('reconnecting');
+    this.connect();
+  }
+
+  /**
    * Disconnect the voice connection, causing a disconnect and closing event to be emitted.
    */
   disconnect() {
