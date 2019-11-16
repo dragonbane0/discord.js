@@ -63,10 +63,10 @@ class VoiceReceiver extends EventEmitter {
           this.disconnectTimer = setTimeout(() => {
 
             if (!this.destroyed) {
-              console.error("[discord.js] UDP Voice Socket hasn't received a voice package in 2 seconds, likely disconnected!");
+              console.error("[discord.js] UDP Voice Socket hasn't received a voice package in 3 seconds, likely disconnected!");
               this.emit('error', { message: "reconnect_required" });
             }
-          }, 2000);
+          }, 3000);
       }
 
       if (packageType == 129 && !user) { //Ignore ping packages ; 129 = ping, 144 = speaking

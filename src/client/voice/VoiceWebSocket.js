@@ -146,10 +146,12 @@ class VoiceWebSocket extends EventEmitter {
    */
   onClose() {
 
-    console.error("[discord.js] TCP Voice Socket got closed, need a re-connect!");
     this.reset();
 
-    if (!this.dead) this.emit('error', { message: "reconnect_required" }); //this.client.setTimeout(this.connect.bind(this), this.attempts * 1000);
+    if (!this.dead) {
+      console.error("[discord.js] TCP Voice Socket got closed, need a re-connect!");
+      this.emit('error', { message: "reconnect_required" }); //this.client.setTimeout(this.connect.bind(this), this.attempts * 1000);
+    }
   }
 
   /**
