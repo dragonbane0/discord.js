@@ -49,62 +49,69 @@ class VoiceReceiver extends EventEmitter {
      */
     this.voiceConnection = connection;
 
-    this._listener = msg => {
-      const packageType = msg.readUInt8(0);
-      const ssrc = +msg.readUInt32BE(8).toString(10);
-      const user = this.voiceConnection.ssrcMap.get(ssrc);
+    /**
+     * The client that instantiated this connection
+     * @type {Client}
+     */
+    this.client = connection.client;
 
-      if (this.disconnectTimer) {
-          clearTimeout(this.disconnectTimer);
-          this.disconnectTimer = null;
-      }
+    this._listener = msg => {
 
       if (!this.disconnectTimer) {
-          this.disconnectTimer = setTimeout(() => {
+          this.disconnectTimer = this.client.setTimeout(() => {
+
+            this.client.clearTimeout(this.disconnectTimer);
+            this.disconnectTimer = null;
 
             if (!this.destroyed) {
               console.error("[discord.js] UDP Voice Socket hasn't received a voice package in 3 seconds, likely disconnected!");
-              this.emit('error', { message: "reconnect_required" });
+              this.emit('error', { message: 'reconnect_required' });
             }
           }, 3000);
       }
+      else {
+          this.disconnectTimer.refresh();
+      }
+    
+      const packageType = msg.readUInt8(0);
+      const ssrc = msg.readUInt32BE(8);
+      const userStat = this.voiceConnection.ssrcMap.get(ssrc);
 
-      if (packageType == 129 && !user) { //Ignore ping packages ; 129 = ping, 144 = speaking
+      /*
+      if (packageType == 129 && !user) { // Ignore ping packages ; 129 = ping, 144 = speaking
           return;
       }
+      */
 
-      if (!user) {
-        if (!this.queues.has(ssrc)) this.queues.set(ssrc, []);
-        this.queues.get(ssrc).push(msg);
-      } else {
+      if (packageType === 144 && !userStat) { // Log dropped packages due ssrc not found, despite being a clear speaking packet. Possible sign of ws connection drop?
+          console.log("[discord.js] ssrc not found in a speaking package:", ssrc);
+      }
 
-        if (this.speakingTimeouts.get(ssrc)) {
-          clearTimeout(this.speakingTimeouts.get(ssrc));
-          this.speakingTimeouts.delete(ssrc);
-        } else {
-          this.voiceConnection.onSpeaking({user_id: user.id, ssrc: ssrc, speaking: true});
-        }
-     
-        let speakingTimer = setTimeout(() => {
+      if (!userStat)
+          return;
+
+      let speakingTimeout = this.speakingTimeouts.get(ssrc);
+
+      if (typeof speakingTimeout === 'undefined') {
+        this.voiceConnection.onSpeaking({ user_id: userStat.userID, ssrc: ssrc, speaking: true });
+
+        speakingTimeout = this.client.setTimeout(() => {
           try {
-            this.voiceConnection.onSpeaking({ user_id: user.id, ssrc: ssrc, speaking: false });
+            this.voiceConnection.onSpeaking({ user_id: userStat.userID, ssrc: ssrc, speaking: false });
+            this.client.clearTimeout(speakingTimeout);
             this.speakingTimeouts.delete(ssrc);
-          }
-          catch (ex) {
+          } catch (ex) {
+            // Connection already closed, ignore
             console.log("Connection already closed, skip onSpeaking event!");
           }
-        }, 40);
+        }, 30); // 40 looks better, 30 maybe sounds better? Discord client recommends 250 ms
 
-        this.speakingTimeouts.set(ssrc, speakingTimer);
-
-        if (this.queues.get(ssrc)) {
-          this.queues.get(ssrc).push(msg);
-          this.queues.get(ssrc).map(m => this.handlePacket(m, user));
-          this.queues.delete(ssrc);
-          return;
-        }
-        this.handlePacket(msg, user);
+        this.speakingTimeouts.set(ssrc, speakingTimeout);
+      } else {
+        speakingTimeout.refresh();
       }
+
+      this.handlePacket(msg, { id: userStat.userID });
     };
     this.voiceConnection.sockets.udp.socket.on('message', this._listener);
   }

@@ -128,7 +128,7 @@ class VoiceConnection extends EventEmitter {
      */
     this.sockets = {};
 
-     /**
+    /**
      * Timeout that makes the bot talk periodically to stay authed
      * @type {Timeout}
      * @private
@@ -352,8 +352,8 @@ class VoiceConnection extends EventEmitter {
 
     // Clean up speaking ping event
     if (this.speakingPingTimeout) {
-        clearTimeout(this.speakingPingTimeout);
-        this.speakingPingTimeout = null;
+      clearTimeout(this.speakingPingTimeout);
+      this.speakingPingTimeout = null;
     }
 
     /**
@@ -435,8 +435,8 @@ class VoiceConnection extends EventEmitter {
     this.status = Constants.VoiceStatus.CONNECTED;
 
     if (this.speakingPingTimeout) {
-        clearTimeout(this.speakingPingTimeout);
-        this.speakingPingTimeout = null;
+      clearTimeout(this.speakingPingTimeout);
+      this.speakingPingTimeout = null;
     }
 
     this.onSpeakingPing();
@@ -510,7 +510,7 @@ class VoiceConnection extends EventEmitter {
         return;
     }
 
-    this.ssrcMap.set(+ssrc, user);
+    this.ssrcMap.set(+ssrc, { userID: user_id, speaking: speaking });
   }
 
   /**
@@ -518,7 +518,7 @@ class VoiceConnection extends EventEmitter {
    * @param {Object} data The received data
    * @private
    */
-  onSpeaking({ user_id, ssrc, speaking }) {
+  onSpeaking({ user_id, speaking }) {
     const guild = this.channel.guild;
     const user = this.client.users.get(user_id);
 
@@ -527,7 +527,7 @@ class VoiceConnection extends EventEmitter {
 
         this.client.fetchUser(user_id).then(user => {
             console.log("[discord.js] Got user success, try again");
-            this.onSpeaking({ user_id: user_id, ssrc: ssrc, speaking: speaking });
+            this.onSpeaking({ user_id: user_id, speaking: speaking });
         }).catch(e => {
             console.log("[discord.js] Failed to fetch user:", e);
             this.emit('debug', e);
@@ -536,7 +536,6 @@ class VoiceConnection extends EventEmitter {
         return;
     }
 
-    this.ssrcMap.set(+ssrc, user);
     if (!speaking) {
       for (const receiver of this.receivers) {
         receiver.stoppedSpeaking(user);

@@ -37,6 +37,15 @@ class VoiceStateUpdateHandler extends AbstractHandler {
         member.voiceSessionID = data.session_id;
         member.voiceChannelID = data.channel_id;
         client.emit(Constants.Events.VOICE_STATE_UPDATE, oldVoiceChannelMember, member);
+      } else {
+        console.log("[discord.js]", data.user_id, "is not in discord.js user cache. Can not update voice state! Try to fetch him now");
+
+        client.fetchUser(data.user_id).then(user => {
+          console.log("[discord.js] Got user success, try again");
+          this.handle(packet);
+        }).catch(e => {
+          console.log("[discord.js] Failed to fetch user:", e);
+        });
       }
     }
   }
