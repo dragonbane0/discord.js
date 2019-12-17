@@ -104,7 +104,7 @@ class VoiceReceiver extends EventEmitter {
             // Connection already closed, ignore
             console.log("Connection already closed, skip onSpeaking event!");
           }
-        }, 30); // 40 looks better, 30 maybe sounds better? Discord client recommends 250 ms
+        }, 70); //70 ms is solid. Discord client recommends 250 ms
 
         this.speakingTimeouts.set(ssrc, speakingTimeout);
       } else {
