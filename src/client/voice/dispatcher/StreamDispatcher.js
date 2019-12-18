@@ -162,7 +162,20 @@ class StreamDispatcher extends VolumeInterface {
     packetBuffer.writeUIntBE(timestamp, 4, 4);
     packetBuffer.writeUIntBE(this.player.voiceConnection.authentication.ssrc, 8, 4);
 
-    packetBuffer.copy(nonce, 0, 0, 12);
+    const mode = this.player.voiceConnection.authentication.encryptionMode;
+
+    // Choose correct nonce depending on encryption
+    let end;
+    if (mode === 'xsalsa20_poly1305_lite') {
+      packetBuffer.copy(nonce, 0, packetBuffer.length - 4);
+      end = packetBuffer.length - 4;
+    } else if (mode === 'xsalsa20_poly1305_suffix') {
+      packetBuffer.copy(nonce, 0, packetBuffer.length - 24);
+      end = packetBuffer.length - 24;
+    } else {
+      packetBuffer.copy(nonce, 0, 0, 12);
+    }
+
     buffer = secretbox.methods.close(buffer, nonce, this.player.voiceConnection.authentication.secretKey.key);
     for (let i = 0; i < buffer.length; i++) packetBuffer[i + 12] = buffer[i];
 

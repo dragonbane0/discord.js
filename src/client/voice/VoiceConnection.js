@@ -159,8 +159,9 @@ class VoiceConnection extends EventEmitter {
     this.sockets.ws.sendPacket({
       op: Constants.VoiceOPCodes.SPEAKING,
       d: {
-        speaking: true,
+        speaking: this.speaking ? 1 : 0,
         delay: 0,
+        ssrc: this.authentication.ssrc,
       },
     }).catch(e => {
       this.emit('debug', e);
@@ -440,7 +441,7 @@ class VoiceConnection extends EventEmitter {
     }
 
     this.onSpeakingPing();
-     
+
     /**
     * Emitted once the connection is ready, when a promise to join a voice channel resolves,
     * the connection will already be ready.
@@ -471,8 +472,9 @@ class VoiceConnection extends EventEmitter {
                                       this.sockets.ws.sendPacket({
                                           op: Constants.VoiceOPCodes.SPEAKING,
                                           d: {
-                                              speaking: false,
-                                              delay: 0
+                                              speaking: 0,
+                                              delay: 0,
+                                              ssrc: this.authentication.ssrc,
                                           }
                                       }).catch(e => {
                                           this.emit('debug', e);

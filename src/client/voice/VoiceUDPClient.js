@@ -100,8 +100,17 @@ class VoiceConnectionUDPClient extends EventEmitter {
           data: {
             address: packet.address,
             port: packet.port,
-            mode: 'xsalsa20_poly1305',
+            mode: 'xsalsa20_poly1305', // xsalsa20_poly1305 or xsalsa20_poly1305_lite
           },
+        },
+      });
+
+      this.voiceConnection.sockets.ws.sendPacket({
+        op: Constants.VoiceOPCodes.IDS,
+        d: {
+          audio_ssrc: this.voiceConnection.authentication.ssrc,
+          rtx_ssrc: 0,
+          video_ssrc: 0,
         },
       });
     });

@@ -85,11 +85,18 @@ class VoiceReceiver extends EventEmitter {
 
       if (packageType === 144 && !userStat) { // Log dropped packages due ssrc not found, despite being a clear speaking packet. Possible sign of ws connection drop?
           console.log("[discord.js] ssrc not found in a speaking package:", ssrc);
+
+          if (!this.voiceConnection || !this.voiceConnection.sockets || !this.voiceConnection.sockets.ws || this.voiceConnection.sockets.ws.lastPongPacket < 1) {
+              console.log("[discord.js] TCP socket has not received a pong packet yet, possibly corrupted!?");
+          } else {
+              let timeSinceLastPong = Math.floor((Date.now() - this.voiceConnection.sockets.ws.lastPongPacket) / 1000);
+              console.log("[discord.js] Last TCP socket pong timestamp:", this.voiceConnection.sockets.ws.lastPongPacket, "-", timeSinceLastPong, "seconds ago!");
+          }
       }
 
       if (!userStat)
           return;
-
+     
       let speakingTimeout = this.speakingTimeouts.get(ssrc);
 
       if (typeof speakingTimeout === 'undefined') {
