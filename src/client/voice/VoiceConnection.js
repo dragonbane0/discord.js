@@ -503,6 +503,15 @@ class VoiceConnection extends EventEmitter {
 
         this.client.fetchUser(user_id).then(user => {
             console.log("[discord.js] Got user success, try again");
+
+            //Fetch guild member as well for safety
+            const guild = this.channel.guild;
+            guild.fetchMember(user).then(member => {
+              console.log("[discord.js] Got guild member success!", member);
+            }).catch(e => {
+              console.log("[discord.js] Failed to fetch member:", e);
+            });
+
             this.onStartSpeaking({ user_id: user_id, ssrc: ssrc, speaking: speaking });
         }).catch(e => {
             console.log("[discord.js] Failed to fetch user:", e);
@@ -529,6 +538,14 @@ class VoiceConnection extends EventEmitter {
 
         this.client.fetchUser(user_id).then(user => {
             console.log("[discord.js] Got user success, try again");
+
+            //Fetch guild member as well for safety
+            guild.fetchMember(user).then(member => {
+              console.log("[discord.js] Got guild member success!", member);
+            }).catch(e => {
+              console.log("[discord.js] Failed to fetch member:", e);
+            });
+
             this.onSpeaking({ user_id: user_id, speaking: speaking });
         }).catch(e => {
             console.log("[discord.js] Failed to fetch user:", e);
