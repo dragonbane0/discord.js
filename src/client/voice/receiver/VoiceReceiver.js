@@ -30,6 +30,7 @@ class VoiceReceiver extends EventEmitter {
     this.opusStreams = new Map();
     this.opusEncoders = new Map();
     this.speakingTimeouts = new Map();
+    this.unknownSpeakers = new Map();
 
     /**
      * Whether or not this receiver has been destroyed
@@ -87,15 +88,68 @@ class VoiceReceiver extends EventEmitter {
           console.log("[discord.js] ssrc not found in a speaking package:", ssrc);
 
           if (!this.voiceConnection || !this.voiceConnection.sockets || !this.voiceConnection.sockets.ws || this.voiceConnection.sockets.ws.lastPongPacket < 1) {
-              console.log("[discord.js] TCP socket has not received a pong packet yet, possibly corrupted!?");
+              console.log("[discord.js] TCP socket has not received a pong packet yet");
           } else {
               let timeSinceLastPong = Math.floor((Date.now() - this.voiceConnection.sockets.ws.lastPongPacket) / 1000);
               console.log("[discord.js] Last TCP socket pong timestamp:", this.voiceConnection.sockets.ws.lastPongPacket, "-", timeSinceLastPong, "seconds ago!");
+          }
+
+          // Enter ssrc into a map if it isn't already. If it is, check timestamp of when it was added, if over 3 seconds ago, perform the upcoming error handler
+          if (!this.unknownSpeakers.has(ssrc)) {
+              this.unknownSpeakers.set(ssrc, new Date().getTime());
+          }
+          else {
+
+              let firstUnknownPackageDate = this.unknownSpeakers.get(ssrc);
+              let duration = new Date().getTime() - firstUnknownPackageDate;
+
+              if (duration > 3000) { //3000 = 3 seconds
+
+                  //Delete unknown speaker to avoid spamming the error handler in a row
+                  this.unknownSpeakers.delete(ssrc);
+
+                  let unknownUser = null;
+
+                  Array.from(this.voiceConnection.channel.members.values()).find(voiceMember => {
+                      if (!voiceMember.user.bot && !voiceMember.selfMute && !voiceMember.serverMute) { // Ignore self, muted and global muted users
+
+                          let foundMatch = Array.from(this.voiceConnection.ssrcMap.values()).find(ssrcEntry => {
+                              return ssrcEntry.userID === voiceMember.user.id;
+                          });
+
+                          if (!foundMatch) {
+                              if (unknownUser) { // Multiple users don't have a match, cancel loop
+                                  unknownUser = null;
+                                  return true;
+                              }
+                              else { // First unknown user
+                                  unknownUser = voiceMember.user;
+                              }
+                          }
+                      }
+
+                      return false; // Continue
+                  });
+
+                  if (unknownUser) {
+                      console.log("[discord.js] this ssrc likely belongs to:", unknownUser);
+                      this.voiceConnection.onStartSpeaking({ user_id: unknownUser.id, ssrc: ssrc, speaking: 1 });
+                  }
+                  else {
+                      console.log("[discord.js] multiple users or none of them fit this ssrc, perform re-connect!");
+                      this.emit('error', { message: 'reboot_required' });
+                  }
+              }
           }
       }
 
       if (!userStat)
           return;
+
+      // Delete unknown speaker since it has been found at this point
+      if (this.unknownSpeakers.has(ssrc)) {
+        this.unknownSpeakers.delete(ssrc);
+      }
      
       let speakingTimeout = this.speakingTimeouts.get(ssrc);
 

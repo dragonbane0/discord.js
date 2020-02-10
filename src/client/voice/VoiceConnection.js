@@ -521,6 +521,8 @@ class VoiceConnection extends EventEmitter {
         return;
     }
 
+    console.log("Associate:", ssrc, "with user:", user_id, user.username, "speaking:", speaking);
+
     this.ssrcMap.set(+ssrc, { userID: user_id, speaking: speaking });
   }
 
