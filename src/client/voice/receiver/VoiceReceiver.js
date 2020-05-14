@@ -174,7 +174,14 @@ class VoiceReceiver extends EventEmitter {
 
       this.handlePacket(msg, { id: userStat.userID });
     };
-    this.voiceConnection.sockets.udp.socket.on('message', this._listener);
+
+    if (!this.voiceConnection.sockets.udp) {
+        console.error("[discord.js] Voice Receiver failed to intialize due missing UDP connection! Try reboot...", this.voiceConnection);
+        this.emit('error', { message: 'reboot_required' });
+    }
+    else {
+        this.voiceConnection.sockets.udp.socket.on('message', this._listener);
+    }
   }
 
   /**
