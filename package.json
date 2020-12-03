@@ -34,19 +34,18 @@
   "runkitExampleFilename": "./docs/examples/ping.js",
   "dependencies": {
     "long": "^4.0.0",
-    "prism-media": "^0.0.3",
+    "prism-media": "^1.2.2",
     "snekfetch": "^3.6.4",
-    "tweetnacl": "^1.0.0",
-    "ws": "^6.0.0"
+    "tweetnacl": "^1.0.3",
+    "ws": "^7.4.0"
   },
   "peerDependencies": {
-    "@discordjs/uws": "^10.149.0",
-    "bufferutil": "^4.0.0",
+    "bufferutil": "^4.0.2",
     "erlpack": "discordapp/erlpack",
-    "libsodium-wrappers": "^0.7.3",
-    "node-opus": "^0.2.7",
-    "opusscript": "^0.0.6",
-    "sodium": "^2.0.3"
+    "libsodium-wrappers": "^0.7.8",
+    "node-opus": "^0.3.3",
+    "opusscript": "^0.0.7",
+    "sodium": "^3.0.2"
   },
   "peerDependenciesMeta": {
     "bufferutil": {
@@ -66,9 +65,6 @@
     },
     "libsodium-wrappers": {
       "optional": true
-    },
-    "uws": {
-      "optional": true
     }
   },
   "devDependencies": {
@@ -87,8 +83,6 @@
   },
   "browser": {
     "ws": false,
-    "uws": false,
-    "@discordjs/uws": false,
     "erlpack": false,
     "prism-media": false,
     "opusscript": false,

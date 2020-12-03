@@ -2,12 +2,7 @@ const Constants = require('../../util/Constants');
 const SecretKey = require('./util/SecretKey');
 const EventEmitter = require('events').EventEmitter;
 
-let WebSocket;
-try {
-  WebSocket = require('@discordjs/uws');
-} catch (err) {
-  WebSocket = require('ws');
-}
+let WebSocket = require('ws');
 
 /**
  * Represents a Voice Connection's WebSocket.
@@ -156,7 +151,9 @@ class VoiceWebSocket extends EventEmitter {
   /**
    * Called whenever the connection to the WebSocket server is lost.
    */
-  onClose() {
+  onClose(event) {
+
+    console.error("[discord.js] TCP Voice Socket got closed, event:", event);
 
     this.reset();
 
@@ -176,7 +173,7 @@ class VoiceWebSocket extends EventEmitter {
 
     if (!this.dead) {
 
-      if (error.message === "uWs client connection error") { //Got disconnected from the TCP Voice Socket
+      if (error.message === "ws client connection error") { //Got disconnected from the TCP Voice Socket
         this.reset();
         this.emit('error', { message: "reconnect_required" });
 
