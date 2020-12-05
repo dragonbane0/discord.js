@@ -66,7 +66,7 @@ class VoiceReceiver extends EventEmitter {
 
             if (!this.destroyed) {
               console.error("[discord.js] UDP Voice Socket hasn't received a voice package in 4 seconds, likely disconnected!");
-              this.emit('error', { message: 'reconnect_required' });
+              this.emit('error', { message: 'reconnect_required' }); //Full re-connect
             }
           }, 4000);
       }
@@ -176,7 +176,7 @@ class VoiceReceiver extends EventEmitter {
     };
 
     if (!this.voiceConnection.sockets.udp) {
-        console.error("[discord.js] Voice Receiver failed to intialize due missing UDP connection! Try reboot...", this.voiceConnection);
+        console.error("[discord.js] Voice Receiver failed to intialize due missing UDP connection! Try reboot...");
 
         //This needs to be delayed so event listeners can be attached first
         setTimeout(() => {
@@ -203,7 +203,11 @@ class VoiceReceiver extends EventEmitter {
    * Destroy this VoiceReceiver, also ending any streams that it may be controlling.
    */
   destroy() {
-    this.voiceConnection.sockets.udp.socket.removeListener('message', this._listener);
+
+    //DB0: Harden against crashes
+    if (this.voiceConnection.sockets.udp && this.voiceConnection.sockets.udp.socket)
+        this.voiceConnection.sockets.udp.socket.removeListener('message', this._listener);
+
     for (const [id, stream] of this.pcmStreams) {
       stream._push(null);
       this.pcmStreams.delete(id);
